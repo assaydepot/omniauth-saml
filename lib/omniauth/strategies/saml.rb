@@ -25,7 +25,7 @@ module OmniAuth
           @name_id  = response.name_id
           @attributes = response.attributes
 
-          return fail!(:invalid_ticket) if @name_id.nil? || @name_id.empty? || !response.valid?
+          return fail!(:invalid_ticket, OmniAuth::Error.new('Invalid SAML Ticket')) if @name_id.nil? || @name_id.empty? || !response.valid?
           super
         rescue ArgumentError => e
           fail!(:invalid_ticket, e)
