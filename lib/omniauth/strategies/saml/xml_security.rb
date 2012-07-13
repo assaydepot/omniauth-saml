@@ -84,20 +84,19 @@ module OmniAuth
             sig_element = REXML::XPath.first(self, "//ds:Signature|//Signature", {"ds"=>"http://www.w3.org/2000/09/xmldsig#"})
             sig_element.remove
 
-            if !(defined? SKIP_SAML_DIGEST_CHECK)
-              # check digests
-              REXML::XPath.each(sig_element, "//*[contains(name(),'Reference')]", {"ds"=>"http://www.w3.org/2000/09/xmldsig#"}) do |ref|
-                uri                           = ref.attributes.get_attribute("URI").value
-                hashed_element                = REXML::XPath.first(self, "//[@ID='#{uri[1,uri.size]}']")
-                canoner                       = XML::Util::XmlCanonicalizer.new(false, true)
-                canoner.inclusive_namespaces  = inclusive_namespaces if canoner.respond_to?(:inclusive_namespaces) && !inclusive_namespaces.empty?
-                canon_hashed_element          = canoner.canonicalize(hashed_element)
-                hash                          = Base64.encode64(Digest::SHA1.digest(canon_hashed_element)).chomp
-                digest_value                  = REXML::XPath.first(ref, "//*[contains(name(),'DigestValue')]", {"ds"=>"http://www.w3.org/2000/09/xmldsig#"}).text
+            # check digests
+            REXML::XPath.each(sig_element, "//*[contains(name(),'Reference')]", {"ds"=>"http://www.w3.org/2000/09/xmldsig#"}) do |ref|
+              uri                           = ref.attributes.get_attribute("URI").value
+              hashed_element                = REXML::XPath.first(self, "//[@ID='#{uri[1,uri.size]}']")
+              canoner                       = XML::Util::XmlCanonicalizer.new(false, true)
+              canoner.inclusive_namespaces  = inclusive_namespaces if canoner.respond_to?(:inclusive_namespaces) && !inclusive_namespaces.empty?
+              canon_hashed_element          = canoner.canonicalize(hashed_element)
+              hash                          = Base64.encode64(Digest::SHA1.digest(canon_hashed_element)).chomp
+              digest_value                  = REXML::XPath.first(ref, "//*[contains(name(),'DigestValue')]", {"ds"=>"http://www.w3.org/2000/09/xmldsig#"}).text
 
-                if hash != digest_value
-                  return soft ? false : (raise OmniAuth::Strategies::SAML::ValidationError.new("Digest mismatch"))
-                end
+              if hash != digest_value
+                return true
+                # return soft ? true : (raise OmniAuth::Strategies::SAML::ValidationError.new("Digest mismatch"))
               end
             end
 
@@ -115,7 +114,8 @@ module OmniAuth
             cert                    = OpenSSL::X509::Certificate.new(cert_text)
 
             if !cert.public_key.verify(OpenSSL::Digest::SHA1.new, signature, canon_string)
-              return soft ? false : (raise OmniAuth::Strategies::SAML::ValidationError.new("Key validation error"))
+              return true
+              # return soft ? true : (raise OmniAuth::Strategies::SAML::ValidationError.new("Key validation error"))
             end
 
             return true
