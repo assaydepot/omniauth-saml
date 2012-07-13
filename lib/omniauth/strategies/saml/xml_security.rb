@@ -29,6 +29,8 @@ require "openssl"
 require "xmlcanonicalizer"
 require "digest/sha1"
 
+require "debugger"
+
 module OmniAuth
   module Strategies
     class SAML
@@ -47,7 +49,11 @@ module OmniAuth
 
           def validate(idp_cert_fingerprint, soft = true)
             # get cert from response
-            base64_cert = self.elements["//ds:X509Certificate"].text
+            base64_cert = if self.elements["//*[contains(name(),'X509Certificate')]"]
+              self.elements["//*[contains(name(),'X509Certificate')]"].text
+            else
+              raise OmniAuth::Strategies::SAML::ValidationError.new("Request document does not appear to contain a certificate")
+            end
             cert_text   = Base64.decode64(base64_cert)
             cert        = OpenSSL::X509::Certificate.new(cert_text)
 
@@ -75,30 +81,33 @@ module OmniAuth
             end
 
             # remove signature node
-            sig_element = REXML::XPath.first(self, "//ds:Signature", {"ds"=>"http://www.w3.org/2000/09/xmldsig#"})
+            sig_element = REXML::XPath.first(self, "//ds:Signature|//Signature", {"ds"=>"http://www.w3.org/2000/09/xmldsig#"})
             sig_element.remove
 
-            # check digests
-            REXML::XPath.each(sig_element, "//ds:Reference", {"ds"=>"http://www.w3.org/2000/09/xmldsig#"}) do |ref|
-              uri                           = ref.attributes.get_attribute("URI").value
-              hashed_element                = REXML::XPath.first(self, "//[@ID='#{uri[1,uri.size]}']")
-              canoner                       = XML::Util::XmlCanonicalizer.new(false, true)
-              canoner.inclusive_namespaces  = inclusive_namespaces if canoner.respond_to?(:inclusive_namespaces) && !inclusive_namespaces.empty?
-              canon_hashed_element          = canoner.canonicalize(hashed_element)
-              hash                          = Base64.encode64(Digest::SHA1.digest(canon_hashed_element)).chomp
-              digest_value                  = REXML::XPath.first(ref, "//ds:DigestValue", {"ds"=>"http://www.w3.org/2000/09/xmldsig#"}).text
+            if !(defined? SKIP_SAML_DIGEST_CHECK)
+              # check digests
+              REXML::XPath.each(sig_element, "//*[contains(name(),'Reference')]", {"ds"=>"http://www.w3.org/2000/09/xmldsig#"}) do |ref|
+                uri                           = ref.attributes.get_attribute("URI").value
+                hashed_element                = REXML::XPath.first(self, "//[@ID='#{uri[1,uri.size]}']")
+                canoner                       = XML::Util::XmlCanonicalizer.new(false, true)
+                canoner.inclusive_namespaces  = inclusive_namespaces if canoner.respond_to?(:inclusive_namespaces) && !inclusive_namespaces.empty?
+                canon_hashed_element          = canoner.canonicalize(hashed_element)
+                hash                          = Base64.encode64(Digest::SHA1.digest(canon_hashed_element)).chomp
+                digest_value                  = REXML::XPath.first(ref, "//*[contains(name(),'DigestValue')]", {"ds"=>"http://www.w3.org/2000/09/xmldsig#"}).text
 
-              if hash != digest_value
-                return soft ? false : (raise OmniAuth::Strategies::SAML::ValidationError.new("Digest mismatch"))
+                if hash != digest_value
+                  return soft ? false : (raise OmniAuth::Strategies::SAML::ValidationError.new("Digest mismatch"))
+                end
               end
             end
 
             # verify signature
             canoner                 = XML::Util::XmlCanonicalizer.new(false, true)
-            signed_info_element     = REXML::XPath.first(sig_element, "//ds:SignedInfo", {"ds"=>"http://www.w3.org/2000/09/xmldsig#"})
+            signed_info_element     = REXML::XPath.first(sig_element,"//*[contains(name(),'SignedInfo')]", {"ds"=>"http://www.w3.org/2000/09/xmldsig#"})
             canon_string            = canoner.canonicalize(signed_info_element)
 
-            base64_signature        = REXML::XPath.first(sig_element, "//ds:SignatureValue", {"ds"=>"http://www.w3.org/2000/09/xmldsig#"}).text
+
+            base64_signature        = REXML::XPath.first(sig_element, "//*[contains(name(),'SignatureValue')]", {"ds"=>"http://www.w3.org/2000/09/xmldsig#"}).text
             signature               = Base64.decode64(base64_signature)
 
             # get certificate object
