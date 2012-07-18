@@ -29,8 +29,6 @@ require "openssl"
 require "xmlcanonicalizer"
 require "digest/sha1"
 
-require "debugger"
-
 module OmniAuth
   module Strategies
     class SAML
