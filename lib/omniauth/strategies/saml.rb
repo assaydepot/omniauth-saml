@@ -25,18 +25,7 @@ module OmniAuth
           @name_id  = response.name_id
           @attributes = response.attributes
 
-          begin
-            response.valid? # to generate some errbit info for Xavier
-          rescue => e
-            if defined?(Airbrake)
-              Airbrake.notify(e,
-                {:base64_response => request.params['SAMLResponse'],
-                 :response_decoded => response.document.inspect,
-                 :note => "Xavier is trying to figure out why AZ's requests are breaking omniauth-saml"}
-              )
-            end
-          end
-          return fail!(:invalid_ticket, OmniAuth::Error.new('Invalid SAML Ticket')) if @name_id.nil? || @name_id.empty? # || !response.valid?
+          return fail!(:invalid_ticket, OmniAuth::Error.new('Invalid SAML Ticket')) if @name_id.nil? || @name_id.empty?
           super
         rescue ArgumentError => e
           fail!(:invalid_ticket, e)
