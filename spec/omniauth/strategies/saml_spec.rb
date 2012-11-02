@@ -50,7 +50,7 @@ describe OmniAuth::Strategies::SAML, :type => :strategy do
       end
 
       it "should set the uid to the nameID in the SAML response" do
-        auth_hash['uid'].should == 'THISISANAMEID'
+        auth_hash['uid'].should =~ 'THISISANAMEID'
       end
 
       it "should set the raw info to all attributes" do
