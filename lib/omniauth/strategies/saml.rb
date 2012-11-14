@@ -1,44 +1,42 @@
 require 'omniauth'
+require 'ruby-saml'
 
 module OmniAuth
   module Strategies
     class SAML
       include OmniAuth::Strategy
-      autoload :AuthRequest,      'omniauth/strategies/saml/auth_request'
-      autoload :AuthResponse,     'omniauth/strategies/saml/auth_response'
-      autoload :ValidationError,  'omniauth/strategies/saml/validation_error'
-      autoload :XMLSecurity,      'omniauth/strategies/saml/xml_security'
-      autoload :MetadataResponse, 'omniauth/strategies/saml/metadata_response'
 
       option :name_identifier_format, "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress"
 
       def request_phase
-        request = OmniAuth::Strategies::SAML::AuthRequest.new
-        redirect(request.create(options))
+        request = Onelogin::Saml::Authrequest.new
+        settings = Onelogin::Saml::Settings.new(options)
+
+        redirect(request.create(settings))
       end
 
       def callback_phase
-        begin
-          response = OmniAuth::Strategies::SAML::AuthResponse.new(request.params['SAMLResponse'])
-          response.settings = options
-
-          @name_id  = response.name_id
-          @attributes = response.attributes
-
-          return fail!(:invalid_ticket, OmniAuth::Error.new('Invalid SAML Ticket')) if @name_id.nil? || @name_id.empty? || !response.valid?
-          super
-        rescue ArgumentError => e
-          fail!(:invalid_ticket, e)
+        unless request.params['SAMLResponse']
+          raise OmniAuth::Strategies::SAML::ValidationError.new("SAML response missing")
         end
-      end
 
-      def other_phase
-        if on_path?("#{request_path}/metadata")
-          response = OmniAuth::Strategies::SAML::MetadataResponse.new
-          Rack::Response.new(response.create(options), 200, { "Content-Type" => "application/xml" })
-        else
-          call_app!
+        response = Onelogin::Saml::Response.new(request.params['SAMLResponse'])
+        response.settings = Onelogin::Saml::Settings.new(options)
+
+        @name_id = response.name_id
+        @attributes = response.attributes
+
+        if @name_id.nil? || @name_id.empty?
+          raise OmniAuth::Strategies::SAML::ValidationError.new("SAML response missing 'name_id'")
         end
+
+        response.validate!
+
+        super
+      rescue OmniAuth::Strategies::SAML::ValidationError
+        fail!(:invalid_ticket, $!)
+      rescue Onelogin::Saml::ValidationError
+        fail!(:invalid_ticket, $!)
       end
 
       uid { @name_id }
@@ -53,7 +51,6 @@ module OmniAuth
       end
 
       extra { { :raw_info => @attributes } }
-
     end
   end
 end
